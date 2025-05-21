@@ -119,6 +119,7 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
         elapsed < 1.0
     ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
 
+
 def test_model_reproducibility(sample_data, preprocessor):
     """RandomForest モデルの再現性を検証"""
     X = sample_data.drop("Survived", axis=1)
