@@ -94,7 +94,9 @@ def test_model_exists(model_path):
 
 @pytest.mark.parametrize("model_path", MODEL_FILES)
 def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
-    """モデルの精度と推論時間を検証"""
+    """
+    モデルの精度と推論時間を検証
+    """
     model = _load_model(model_path)
 
     # テスト用データの準備
@@ -102,19 +104,20 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     y = sample_data["Survived"].astype(int)
     _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    X_test_preprocessed = preprocessor.transform(X_test)
+
     # 精度チェック
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(X_test_preprocessed)
     acc = accuracy_score(y_test, y_pred)
     assert acc >= 0.75, f"{os.path.basename(model_path)} の精度が低すぎます: {acc:.4f}"
 
     # 推論時間チェック
     start = time.time()
-    model.predict(X_test)
+    model.predict(X_test_preprocessed)
     elapsed = time.time() - start
     assert (
         elapsed < 1.0
     ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
-
 
 def test_model_reproducibility(sample_data, preprocessor):
     """RandomForest モデルの再現性を検証"""
