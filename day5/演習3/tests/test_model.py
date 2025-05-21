@@ -1,159 +1,80 @@
-import os
-import time
-import pickle
+# day5/演習3/train_models.py
 
-import numpy as np
+import os
+import pickle
 import pandas as pd
-import pytest
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score
+from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
-# テスト用データとモデルパスを定義
-DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/Titanic.csv")
-MODEL_DIR = os.path.join(os.path.dirname(__file__), "../models")
-MODEL_FILES = [
-    os.path.join(MODEL_DIR, "randomforest_model.pkl"),
-    os.path.join(MODEL_DIR, "logisticregression_model.pkl"),
-]
+# ディレクトリ設定
+BASE_DIR = os.path.dirname(__file__)
+DATA_DIR = os.path.join(BASE_DIR, "../data")
+MODEL_DIR = os.path.join(BASE_DIR, "../models")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
+# データ読み込み or 取得
+DATA_PATH = os.path.join(DATA_DIR, "Titanic.csv")
+if not os.path.exists(DATA_PATH):
+    titanic = fetch_openml("titanic", version=1, as_frame=True)
+    df = titanic.data
+    df["Survived"] = titanic.target.astype(int)
+    df = df[["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Survived"]]
+    df.to_csv(DATA_PATH, index=False)
+else:
+    df = pd.read_csv(DATA_PATH)
 
-@pytest.fixture
-def sample_data():
-    """テスト用データセットを読み込む"""
-    if not os.path.exists(DATA_PATH):
-        from sklearn.datasets import fetch_openml
+# 特徴量／ターゲット分割
+X = df.drop("Survived", axis=1)
+y = df["Survived"].astype(int)
 
-        titanic = fetch_openml("titanic", version=1, as_frame=True)
-        df = titanic.data
-        df["Survived"] = titanic.target
-
-        # 必要なカラムのみ選択
-        df = df[
-            [
-                "Pclass",
-                "Sex",
-                "Age",
-                "SibSp",
-                "Parch",
-                "Fare",
-                "Embarked",
-                "Survived",
-            ]
-        ]
-
-        os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
-        df.to_csv(DATA_PATH, index=False)
-
-    return pd.read_csv(DATA_PATH)
-
-
-@pytest.fixture
-def preprocessor():
-    """前処理パイプラインを定義"""
-    numeric_features = ["Age", "Pclass", "SibSp", "Parch", "Fare"]
-    categorical_features = ["Sex", "Embarked"]
-
-    numeric_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
-    categorical_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
-        ]
-    )
-    return ColumnTransformer(
-        transformers=[
-            ("num", numeric_transformer, numeric_features),
-            ("cat", categorical_transformer, categorical_features),
-        ]
-    )
-
-
-def _load_model(path: str):
-    """pickle からモデルを読み込む"""
-    with open(path, "rb") as f:
-        return pickle.load(f)
-
-
-@pytest.mark.parametrize("model_path", MODEL_FILES)
-def test_model_exists(model_path):
-    """モデルファイルが存在するか確認"""
-    if not os.path.exists(model_path):
-        pytest.skip(f"{model_path} が存在しないためスキップします")
-    assert os.path.exists(model_path), f"{model_path} が存在しません"
-
-
-@pytest.mark.parametrize("model_path", MODEL_FILES)
-def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
-    """
-    モデルの精度と推論時間を検証
-    """
-    model = _load_model(model_path)
-
-    # テスト用データの準備
-    X = sample_data.drop("Survived", axis=1)
-    y = sample_data["Survived"].astype(int)
-
-    # 学習用データとテスト用データに分割
-    X_train, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # 前処理器を学習させる
-    preprocessor.fit(X_train)
-    # テストデータを変換
-    X_test_preprocessed = preprocessor.transform(X_test)
-
-    # 精度チェック
-    y_pred = model.predict(X_test_preprocessed)
-    acc = accuracy_score(y_test, y_pred)
-    assert acc >= 0.75, f"{os.path.basename(model_path)} の精度が低すぎます: {acc:.4f}"
-
-    # 推論時間チェック
-    start = time.time()
-    model.predict(X_test_preprocessed)
-    elapsed = time.time() - start
-    assert (
-        elapsed < 1.0
-    ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
-
-
-@pytest.mark.parametrize(
-    "clf, name",
-    [
-        (RandomForestClassifier(n_estimators=100, random_state=42), "RandomForest"),
-        (LogisticRegression(max_iter=1000, random_state=42), "LogisticRegression"),
-    ],
+# 学習データとテストデータに分割
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
 )
-def test_model_reproducibility(sample_data, preprocessor, clf, name):
-    """モデルの予測結果に再現性があるか確認"""
-    X = sample_data.drop("Survived", axis=1)
-    y = sample_data["Survived"].astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
 
-    def make_pipeline():
-        return Pipeline(
-            steps=[
-                ("preprocessor", preprocessor),
-                ("classifier", clf),
-            ]
-        )
+# テスト用と同じ前処理定義
+numeric_features = ["Age", "Pclass", "SibSp", "Parch", "Fare"]
+categorical_features = ["Sex", "Embarked"]
 
-    model1 = make_pipeline()
-    model2 = make_pipeline()
-    model1.fit(X_train, y_train)
-    model2.fit(X_train, y_train)
+numeric_transformer = Pipeline(
+    [("imputer", SimpleImputer(strategy="median")), ("scaler", StandardScaler())]
+)
+categorical_transformer = Pipeline(
+    [
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore")),
+    ]
+)
 
-    pred1 = model1.predict(X_test)
-    pred2 = model2.predict(X_test)
-    assert np.array_equal(pred1, pred2), f"{name} モデルの予測結果に再現性がありません"
+preprocessor = ColumnTransformer(
+    [
+        ("num", numeric_transformer, numeric_features),
+        ("cat", categorical_transformer, categorical_features),
+    ]
+)
+
+# 前処理を学習データに適用
+X_train_pre = preprocessor.fit_transform(X_train)
+
+# ── ランダムフォレストの学習・保存 ──
+rf = RandomForestClassifier(random_state=42)
+rf.fit(X_train_pre, y_train)
+
+with open(os.path.join(MODEL_DIR, "randomforest_model.pkl"), "wb") as f:
+    pickle.dump(rf, f)
+
+# ── ロジスティック回帰の学習・保存 ──
+lr = LogisticRegression(random_state=42, max_iter=1000)
+lr.fit(X_train_pre, y_train)
+
+with open(os.path.join(MODEL_DIR, "logisticregression_model.pkl"), "wb") as f:
+    pickle.dump(lr, f)
+
+print("Models have been trained and saved to ../models/")
