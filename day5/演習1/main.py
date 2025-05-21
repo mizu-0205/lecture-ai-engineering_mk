@@ -5,8 +5,10 @@ import pandas as pd
 import numpy as np
 import random
 import pickle
+from typing import Dict
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from mlflow.models.signature import infer_signature
@@ -43,22 +45,33 @@ def prepare_data(test_size=0.2, random_state=42):
 def train_and_evaluate(
     X_train, X_test, y_train, y_test, n_estimators=100, max_depth=None, random_state=42
 ):
-    model = RandomForestClassifier(
-        n_estimators=n_estimators, max_depth=max_depth, random_state=random_state
-    )
-    model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
-    accuracy = accuracy_score(y_test, predictions)
-    return model, accuracy
+    models = {
+        "RandomForest": RandomForestClassifier(
+            n_estimators=random.randint(50, 200),
+            max_depth=random.choice([None, 3, 5, 10, 15]),
+            random_state=random_state,
+        ),
+        "LogisticRegression": LogisticRegression(
+            max_iter=1000, solver="lbfgs", random_state=random_state
+        ),
+    }
+    results = {}
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        acc = accuracy_score(y_test, model.predict(X_test))
+        print(f"{name} の精度: {acc:.4f}")
+        results[name] = {"model": model, "accuracy": acc, "params": model.get_params()}
+    return results
 
 
 # モデル保存
-def log_model(model, accuracy, params):
+def log_model(model, accuracy, params, X_train, X_test, model_name):
     with mlflow.start_run():
         # パラメータをログ
         for param_name, param_value in params.items():
             mlflow.log_param(param_name, param_value)
-
+        # モデルのハイパーパラメータをログ
+        mlflow.log_param("model_name", model_name)
         # メトリクスをログ
         mlflow.log_metric("accuracy", accuracy)
 
@@ -100,24 +113,21 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = prepare_data(
         test_size=test_size, random_state=data_random_state
     )
-
-    # 学習と評価
-    model, accuracy = train_and_evaluate(
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        random_state=model_random_state,
+    results = train_and_evaluate(
+        X_train, X_test, y_train, y_test, random_state=model_random_state
     )
-
-    # モデル保存
-    log_model(model, accuracy, params)
-
-    model_dir = "models"
-    os.makedirs(model_dir, exist_ok=True)
-    model_path = os.path.join(model_dir, f"titanic_model.pkl")
-    with open(model_path, "wb") as f:
-        pickle.dump(model, f)
-    print(f"モデルを {model_path} に保存しました")
+    # 学習と評価
+    os.makedirs("models", exist_ok=True)
+    for name, res in results.items():
+        log_model(
+            res["model"],
+            res["accuracy"],
+            res["params"],
+            X_train,
+            X_test,
+            model_name=name,
+        )
+        model_path = os.path.join("models", f"{name.lower()}_model.pkl")
+        with open(model_path, "wb") as f:
+            pickle.dump(res["model"], f)
+        print(f"{name} モデルを {model_path} に保存しました")
