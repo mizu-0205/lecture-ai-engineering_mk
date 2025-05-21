@@ -111,7 +111,9 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     start = time.time()
     model.predict(X_test)
     elapsed = time.time() - start
-    assert elapsed < 1.0, f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
+    assert (
+        elapsed < 1.0
+    ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
 
 
 def test_model_reproducibility(sample_data, preprocessor):
@@ -146,5 +148,3 @@ def test_model_reproducibility(sample_data, preprocessor):
     assert np.array_equal(
         pred1, pred2
     ), "RandomForest モデルの予測結果に再現性がありません"
-
-
