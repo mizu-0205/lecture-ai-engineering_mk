@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression  # 追加
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
@@ -102,8 +103,15 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     # テスト用データの準備
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
-    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    # 学習用データとテスト用データに分割
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    # 前処理器を学習させる
+    preprocessor.fit(X_train)
+    # テストデータを変換
     X_test_preprocessed = preprocessor.transform(X_test)
 
     # 精度チェック
@@ -120,35 +128,38 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
 
 
-def test_model_reproducibility(sample_data, preprocessor):
-    """RandomForest モデルの再現性を検証"""
+# ↓ ここから修正：RandomForest と LogisticRegression の両方をテスト
+@pytest.mark.parametrize(
+    "clf, name",
+    [
+        (RandomForestClassifier(n_estimators=100, random_state=42), "RandomForest"),
+        (LogisticRegression(max_iter=1000, random_state=42), "LogisticRegression"),
+    ],
+)
+def test_model_reproducibility(sample_data, preprocessor, clf, name):
+    """モデルの再現性を検証"""
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    def make_rf():
+    # パイプラインを作成
+    def make_pipeline():
         return Pipeline(
             steps=[
                 ("preprocessor", preprocessor),
-                (
-                    "classifier",
-                    RandomForestClassifier(
-                        n_estimators=100,
-                        random_state=42,
-                    ),
-                ),
+                ("classifier", clf),
             ]
         )
 
-    model1 = make_rf()
-    model2 = make_rf()
-    model1.fit(X_train, y_train)
-    model2.fit(X_train, y_train)
+    # 2 回作ってフィット
+    pipe1 = make_pipeline()
+    pipe2 = make_pipeline()
+    pipe1.fit(X_train, y_train)
+    pipe2.fit(X_train, y_train)
 
-    pred1 = model1.predict(X_test)
-    pred2 = model2.predict(X_test)
-    assert np.array_equal(
-        pred1, pred2
-    ), "RandomForest モデルの予測結果に再現性がありません"
+    # 同じ結果になること
+    pred1 = pipe1.predict(X_test)
+    pred2 = pipe2.predict(X_test)
+    assert np.array_equal(pred1, pred2), f"{name} モデルの予測結果に再現性がありません"
