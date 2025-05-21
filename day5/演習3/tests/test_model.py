@@ -1,16 +1,17 @@
 import os
-import pytest
-import pandas as pd
-import numpy as np
-import pickle
 import time
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+import pickle
+
+import numpy as np
+import pandas as pd
+import pytest
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # テスト用データとモデルパスを定義
 DATA_PATH = os.path.join(os.path.dirname(__file__), "../data/Titanic.csv")
@@ -33,7 +34,16 @@ def sample_data():
 
         # 必要なカラムのみ選択
         df = df[
-            ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked", "Survived"]
+            [
+                "Pclass",
+                "Sex",
+                "Age",
+                "SibSp",
+                "Parch",
+                "Fare",
+                "Embarked",
+                "Survived",
+            ]
         ]
 
         os.makedirs(os.path.dirname(DATA_PATH), exist_ok=True)
@@ -106,19 +116,23 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
 
 def test_model_reproducibility(sample_data, preprocessor):
     """RandomForest モデルの再現性を検証"""
-    # ここでは RandomForest にのみ絞って検証
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # 2 つの同設定モデルを作成・学習
     def make_rf():
         return Pipeline(
             steps=[
                 ("preprocessor", preprocessor),
-                ("classifier", RandomForestClassifier(n_estimators=100, random_state=42)),
+                (
+                    "classifier",
+                    RandomForestClassifier(
+                        n_estimators=100,
+                        random_state=42,
+                    ),
+                ),
             ]
         )
 
@@ -132,4 +146,5 @@ def test_model_reproducibility(sample_data, preprocessor):
     assert np.array_equal(
         pred1, pred2
     ), "RandomForest モデルの予測結果に再現性がありません"
+
 
