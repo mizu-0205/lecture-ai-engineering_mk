@@ -94,7 +94,7 @@ def test_model_exists(model_path):
 
 
 @pytest.mark.parametrize("model_path", MODEL_FILES)
-def test_model_accuracy_and_time(sample_data, model_path):
+def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     """
     モデルの精度と推論時間を検証
     """
@@ -104,23 +104,22 @@ def test_model_accuracy_and_time(sample_data, model_path):
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
 
-    # テスト用データに分割（学習用は使わない）
-    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # 学習用データとテスト用データに分割
+    X_train, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # モデルが学習時に使った特徴量だけを抽出
-    if hasattr(model, "feature_names_in_"):
-        X_input = X_test[model.feature_names_in_]
-    else:
-        X_input = X_test
+    # 前処理器を学習させる
+    preprocessor.fit(X_train)
+    # テストデータを変換
+    X_test_preprocessed = preprocessor.transform(X_test)
 
     # 精度チェック
-    y_pred = model.predict(X_input)
+    y_pred = model.predict(X_test_preprocessed)
     acc = accuracy_score(y_test, y_pred)
     assert acc >= 0.75, f"{os.path.basename(model_path)} の精度が低すぎます: {acc:.4f}"
 
     # 推論時間チェック
     start = time.time()
-    model.predict(X_input)
+    model.predict(X_test_preprocessed)
     elapsed = time.time() - start
     assert (
         elapsed < 1.0
@@ -135,14 +134,13 @@ def test_model_accuracy_and_time(sample_data, model_path):
     ],
 )
 def test_model_reproducibility(sample_data, preprocessor, clf, name):
-    """モデルの再現性を検証"""
+    """モデルの予測結果に再現性があるか確認"""
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
-    # パイプラインを作成
     def make_pipeline():
         return Pipeline(
             steps=[
@@ -151,11 +149,11 @@ def test_model_reproducibility(sample_data, preprocessor, clf, name):
             ]
         )
 
-    pipe1 = make_pipeline()
-    pipe2 = make_pipeline()
-    pipe1.fit(X_train, y_train)
-    pipe2.fit(X_train, y_train)
+    model1 = make_pipeline()
+    model2 = make_pipeline()
+    model1.fit(X_train, y_train)
+    model2.fit(X_train, y_train)
 
-    pred1 = pipe1.predict(X_test)
-    pred2 = pipe2.predict(X_test)
+    pred1 = model1.predict(X_test)
+    pred2 = model2.predict(X_test)
     assert np.array_equal(pred1, pred2), f"{name} モデルの予測結果に再現性がありません"
