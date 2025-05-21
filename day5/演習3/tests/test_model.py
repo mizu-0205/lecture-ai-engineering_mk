@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression  # 追加
+from sklearn.linear_model import LogisticRegression
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
@@ -94,7 +94,7 @@ def test_model_exists(model_path):
 
 
 @pytest.mark.parametrize("model_path", MODEL_FILES)
-def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
+def test_model_accuracy_and_time(sample_data, model_path):
     """
     モデルの精度と推論時間を検証
     """
@@ -104,31 +104,29 @@ def test_model_accuracy_and_time(sample_data, preprocessor, model_path):
     X = sample_data.drop("Survived", axis=1)
     y = sample_data["Survived"].astype(int)
 
-    # 学習用データとテスト用データに分割
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    # テスト用データに分割（学習用は使わない）
+    _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # 前処理器を学習させる
-    preprocessor.fit(X_train)
-    # テストデータを変換
-    X_test_preprocessed = preprocessor.transform(X_test)
+    # モデルが学習時に使った特徴量だけを抽出
+    if hasattr(model, "feature_names_in_"):
+        X_input = X_test[model.feature_names_in_]
+    else:
+        X_input = X_test
 
     # 精度チェック
-    y_pred = model.predict(X_test_preprocessed)
+    y_pred = model.predict(X_input)
     acc = accuracy_score(y_test, y_pred)
     assert acc >= 0.75, f"{os.path.basename(model_path)} の精度が低すぎます: {acc:.4f}"
 
     # 推論時間チェック
     start = time.time()
-    model.predict(X_test_preprocessed)
+    model.predict(X_input)
     elapsed = time.time() - start
     assert (
         elapsed < 1.0
     ), f"{os.path.basename(model_path)} の推論時間が長すぎます: {elapsed:.3f}s"
 
 
-# ↓ ここから修正：RandomForest と LogisticRegression の両方をテスト
 @pytest.mark.parametrize(
     "clf, name",
     [
@@ -153,13 +151,11 @@ def test_model_reproducibility(sample_data, preprocessor, clf, name):
             ]
         )
 
-    # 2 回作ってフィット
     pipe1 = make_pipeline()
     pipe2 = make_pipeline()
     pipe1.fit(X_train, y_train)
     pipe2.fit(X_train, y_train)
 
-    # 同じ結果になること
     pred1 = pipe1.predict(X_test)
     pred2 = pipe2.predict(X_test)
     assert np.array_equal(pred1, pred2), f"{name} モデルの予測結果に再現性がありません"
